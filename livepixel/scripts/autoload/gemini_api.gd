@@ -16,7 +16,7 @@ const GEMINI_BASE_URL := "https://generativelanguage.googleapis.com/v1beta/model
 ## Model IDs
 const MODEL_IMAGE := "gemini-3.1-flash-image-preview"
 const MODEL_FLASH := "gemini-3-flash-preview"
-const MODEL_PRO := "gemini-3.1-pro-preview"
+const MODEL_PRO := "gemini-3-pro-preview"
 
 var api_key: String = ""
 var _http_sprite: HTTPRequest
@@ -73,36 +73,42 @@ func _ready() -> void:
 	_http_sprite = HTTPRequest.new()
 	_http_sprite.name = "HTTPSprite"
 	_http_sprite.timeout = 30.0
+	_http_sprite.use_threads = true
 	add_child(_http_sprite)
 	_http_sprite.request_completed.connect(_on_sprite_request_completed)
 	
 	_http_modify = HTTPRequest.new()
 	_http_modify.name = "HTTPModify"
 	_http_modify.timeout = 30.0
+	_http_modify.use_threads = true
 	add_child(_http_modify)
 	_http_modify.request_completed.connect(_on_modify_request_completed)
 	
 	_http_parse = HTTPRequest.new()
 	_http_parse.name = "HTTPParse"
 	_http_parse.timeout = 15.0
+	_http_parse.use_threads = true
 	add_child(_http_parse)
 	_http_parse.request_completed.connect(_on_parse_request_completed)
 	
 	_http_expand = HTTPRequest.new()
 	_http_expand.name = "HTTPExpand"
 	_http_expand.timeout = 30.0
+	_http_expand.use_threads = true
 	add_child(_http_expand)
 	_http_expand.request_completed.connect(_on_expand_request_completed)
 	
 	_http_refine = HTTPRequest.new()
 	_http_refine.name = "HTTPRefine"
 	_http_refine.timeout = 20.0
+	_http_refine.use_threads = true
 	add_child(_http_refine)
 	_http_refine.request_completed.connect(_on_refine_request_completed)
 	
 	_http_analyze = HTTPRequest.new()
 	_http_analyze.name = "HTTPAnalyze"
 	_http_analyze.timeout = 30.0
+	_http_analyze.use_threads = true
 	add_child(_http_analyze)
 	_http_analyze.request_completed.connect(_on_analyze_request_completed)
 
@@ -160,6 +166,10 @@ Your job:
 	var json_body := JSON.stringify(body)
 	
 	print("[GeminiAPI] Step 1: Sending prompt to Pro LLM for refinement...")
+	
+	# Delay slightly to prevent TLS handshake collision on Linux
+	await get_tree().create_timer(0.5).timeout
+	
 	var err := _http_refine.request(url, headers, HTTPClient.METHOD_POST, json_body)
 	if err != OK:
 		print("[GeminiAPI] Pro LLM request failed, falling back to basic prompt")
@@ -171,8 +181,8 @@ func _on_refine_request_completed(result: int, response_code: int, _headers: Pac
 	if result != HTTPRequest.RESULT_SUCCESS:
 		_retry_count += 1
 		if _retry_count <= MAX_RETRIES:
-			print("[GeminiAPI] ⚠️ Pro LLM refinement connection error (result %d), retrying %d/%d..." % [result, _retry_count, MAX_RETRIES])
-			await get_tree().create_timer(1.0).timeout
+			print("[GeminiAPI] ⚠️ Pro LLM refinement connection error (result %d), retrying %d/%d in 2s..." % [result, _retry_count, MAX_RETRIES])
+			await get_tree().create_timer(2.0).timeout
 			_refine_prompt_with_llm(_current_sprite_spec)
 			return
 		else:

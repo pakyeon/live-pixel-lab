@@ -27,7 +27,7 @@ LivePixel Lab is a **real-time pixel game creation sandbox** built with **Godot 
 └────────────────────┬─────────────────────────────────┘
                      │
           ┌──────────▼──────────┐
-          │  Step 1: Pro LLM    │  gemini-3.1-pro-preview
+          │  Step 1: Pro LLM    │  gemini-3-pro-preview
           │  Prompt Refinement  │  → Expert-level detailed prompt
           └──────────┬──────────┘
                      │

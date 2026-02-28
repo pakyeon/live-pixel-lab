@@ -167,7 +167,7 @@ All components run inside a single Godot 4.x application — no separate web fro
    - API key loaded from environment variable `GEMINI_API_KEY` or `user://api_key.txt`
 3. **Prompt Interpreter (Text → Spec) — Autoload: GeminiAPI**
    - Routes to `gemini-3-flash-preview` for simple parameter changes
-   - Routes to `gemini-3.1-pro-preview` for complex character concepts
+   - Routes to `gemini-3-pro-preview` for complex character concepts
    - Returns structured JSON with multipliers (speed, jump, gravity, scale, fps)
 4. **Sprite Generation/Modification Module — Autoload: GeminiAPI**
    - Uses `gemini-3.1-flash-image-preview` (Nano Banana) for sprite sheet generation and modification
@@ -195,7 +195,7 @@ All components run inside a single Godot 4.x application — no separate web fro
 - **Lightweight Task LLM: `gemini-3-flash-preview`**
   - Usage: Parsing short prompts, converting simple parameter modification requests (e.g., "double jump height", "set to 6 frames", etc.) into structured specs.
   - Characteristics: Processes small, iterative modification requests during gameplay quickly with low latency and cost.
-- **Complex Task LLM: `gemini-3.1-pro-preview`**
+- **Complex Task LLM: `gemini-3-pro-preview`**
   - Usage: Generating new character concepts, designing behavior sets with complex rules, interpreting long system messages/settings, and handling difficult text interpretations.
   - Characteristics: Maintains consistent project-wide rules and style guides based on higher reasoning performance.
 
@@ -210,7 +210,7 @@ All components run inside a single Godot 4.x application — no separate web fro
 ### 7.3 Model Routing Strategy
 - Automatically routes to the appropriate model based on request type from frontend/backend:
   - **Minor modifications during real-time play** → `gemini-3-flash-preview`
-  - **Designing new character/field concepts, defining complex rules/behaviors** → `gemini-3.1-pro-preview`
+  - **Designing new character/field concepts, defining complex rules/behaviors** → `gemini-3-pro-preview`
   - **Generating and modifying sprites/tilesets** → `gemini-3.1-flash-image-preview`
 - Both requests and responses are converted into internal specs (JSON) to be used consistently across the game runtime (Godot) and asset pipelines.
 
