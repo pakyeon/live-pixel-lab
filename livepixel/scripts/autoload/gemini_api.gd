@@ -15,7 +15,7 @@ const GEMINI_BASE_URL := "https://generativelanguage.googleapis.com/v1beta/model
 
 ## Model IDs
 const MODEL_IMAGE := "gemini-3.1-flash-image-preview"
-const MODEL_FLASH := "gemini-3.1-flash-preview"
+const MODEL_FLASH := "gemini-3-flash-preview"
 const MODEL_PRO := "gemini-3.1-pro-preview"
 
 var api_key: String = ""
@@ -168,8 +168,22 @@ Your job:
 
 ## Callback: Pro model returned the refined prompt. Now send it to image generation.
 func _on_refine_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
-	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
-		print("[GeminiAPI] ⚠️ Pro LLM refinement failed (result: %d, HTTP: %d), using basic prompt" % [result, response_code])
+	if result != HTTPRequest.RESULT_SUCCESS:
+		_retry_count += 1
+		if _retry_count <= MAX_RETRIES:
+			print("[GeminiAPI] ⚠️ Pro LLM refinement connection error (result %d), retrying %d/%d..." % [result, _retry_count, MAX_RETRIES])
+			await get_tree().create_timer(1.0).timeout
+			_refine_prompt_with_llm(_current_sprite_spec)
+			return
+		else:
+			print("[GeminiAPI] ❌ Max retries reached for Pro LLM, using basic prompt")
+			_send_sprite_request(_current_sprite_spec)
+			return
+	
+	if response_code != 200:
+		print("[GeminiAPI] ⚠️ Pro LLM refinement failed (HTTP: %d), using basic prompt" % response_code)
+		if body.size() > 0:
+			print("[GeminiAPI] Pro LLM error body: " + body.get_string_from_utf8().substr(0, 500))
 		_send_sprite_request(_current_sprite_spec)
 		return
 	
@@ -849,6 +863,8 @@ func _on_analyze_request_completed(result: int, response_code: int, _headers: Pa
 	
 	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
 		print("[GeminiAPI] ⚠️ Vision analysis failed (%d / HTTP %d), using math fallback" % [result, response_code])
+		if body.size() > 0:
+			print("[GeminiAPI] Vision error body: " + body.get_string_from_utf8().substr(0, 500))
 		sprite_generated.emit(image, fb_meta)
 		return
 	
