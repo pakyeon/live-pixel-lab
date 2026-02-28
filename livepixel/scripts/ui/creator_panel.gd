@@ -182,10 +182,20 @@ func _on_sprite_generated(image: Image, metadata: Dictionary) -> void:
 	_current_image = image
 	_current_metadata = metadata
 	
-	# Show the full sprite sheet as preview
-	var tex := ImageTexture.create_from_image(image)
+	# Extract the first frame for preview (instead of showing the full sheet)
+	var fw: int = metadata.get("frame_width", 64)
+	var fh: int = metadata.get("frame_height", 64)
+	var preview_img := image.get_region(Rect2i(0, 0, fw, fh))
+	
+	# Scale up for visibility if the frame is small
+	if preview_img.get_width() < 128:
+		var scale_up := 128 / preview_img.get_width()
+		preview_img.resize(preview_img.get_width() * scale_up, preview_img.get_height() * scale_up, Image.INTERPOLATE_NEAREST)
+	
+	var tex := ImageTexture.create_from_image(preview_img)
 	preview_texture.texture = tex
 	preview_texture.visible = true
+	print("[CreatorPanel] Preview set: %dx%d (frame 0)" % [preview_img.get_width(), preview_img.get_height()])
 	
 	play_button.visible = true
 	status_label.text = "✅ Sprite ready! Click Play to test."

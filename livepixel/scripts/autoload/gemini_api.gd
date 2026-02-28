@@ -651,6 +651,7 @@ func _extract_image_from_response(body: PackedByteArray) -> Image:
 			
 			result_image = Image.new()
 			var mime: String = inline_data.get("mimeType", "image/png")
+			print("[GeminiAPI] Image MIME type: %s, data size: %d bytes" % [mime, raw_bytes.size()])
 			var err: int
 			if "png" in mime:
 				err = result_image.load_png_from_buffer(raw_bytes)
@@ -664,6 +665,12 @@ func _extract_image_from_response(body: PackedByteArray) -> Image:
 			if err != OK:
 				push_error("Failed to load image from response")
 				result_image = null
+			else:
+				# Force convert to RGBA8 to ensure alpha channel exists
+				# (JPEG has no alpha → background will be opaque without this)
+				if result_image.get_format() != Image.FORMAT_RGBA8:
+					print("[GeminiAPI] Converting image from format %d to RGBA8" % result_image.get_format())
+					result_image.convert(Image.FORMAT_RGBA8)
 	
 	return result_image
 
