@@ -165,7 +165,7 @@ Test Results: 4 Passed, 0 Failed
 | **Game Engine** | Godot 4.6 (GDScript) |
 | **Prompt Refinement** | Gemini 3.1 Pro Preview |
 | **Image Generation** | Gemini 3.1 Flash Image Preview (Nano Banana 2) |
-| **Text Commands** | Gemini 3.1 Flash Preview |
+| **Text Commands** | Gemini 3 Flash Preview |
 
 ---
 
