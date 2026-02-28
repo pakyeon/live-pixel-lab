@@ -24,6 +24,7 @@ var _http_modify: HTTPRequest
 var _http_parse: HTTPRequest
 var _http_expand: HTTPRequest
 var _http_refine: HTTPRequest
+var _http_analyze: HTTPRequest
 var is_generating: bool = false
 
 ## Stores the latest sprite spec for metadata derivation
@@ -98,6 +99,16 @@ func _ready() -> void:
 	_http_refine.timeout = 20.0
 	add_child(_http_refine)
 	_http_refine.request_completed.connect(_on_refine_request_completed)
+	
+	_http_analyze = HTTPRequest.new()
+	_http_analyze.name = "HTTPAnalyze"
+	_http_analyze.timeout = 30.0
+	add_child(_http_analyze)
+	_http_analyze.request_completed.connect(_on_analyze_request_completed)
+
+## Pending state for Vision analysis pipeline
+var _pending_analysis_image: Image = null
+var _pending_analysis_metadata: Dictionary = {}
 
 
 ## Generate a new sprite from a structured spec dictionary.
@@ -727,14 +738,156 @@ func _on_sprite_request_completed(result: int, response_code: int, _headers: Pac
 	var image := _extract_image_from_response(body)
 	if image:
 		print("[GeminiAPI] ✅ Image extracted: %dx%d" % [image.get_width(), image.get_height()])
-		# Build metadata from the actual image + spec
-		var metadata := _parse_layout_metadata(_current_sprite_spec, image)
-		print("[GeminiAPI] Metadata: %s" % str(metadata))
-		sprite_generated.emit(image, metadata)
+		
+		# Stage A: Remove background
+		image = _remove_background(image)
+		print("[GeminiAPI] ✅ Background removal done")
+		
+		# Stage B: Build base math-based metadata (used as fallback)
+		var base_metadata := _parse_layout_metadata(_current_sprite_spec, image)
+		
+		# Stage C: Flash Vision for precise frame boundary detection
+		_pending_analysis_image = image
+		_pending_analysis_metadata = base_metadata
+		_analyze_frame_bounds(image, base_metadata)
 	else:
 		print("[GeminiAPI] ❌ Failed to extract image. Response body preview:")
 		print(body.get_string_from_utf8().substr(0, 1000))
 		api_error.emit("Failed to extract image from response")
+
+
+## Stage A: Remove image background using corner-pixel chroma key.
+func _remove_background(img: Image) -> Image:
+	img.convert(Image.FORMAT_RGBA8)
+	var bg := _detect_bg_color(img)
+	print("[GeminiAPI] BG color detected: R=%.2f G=%.2f B=%.2f" % [bg.r, bg.g, bg.b])
+	var w := img.get_width()
+	var h := img.get_height()
+	for y in range(h):
+		for x in range(w):
+			var px := img.get_pixel(x, y)
+			if _color_similar(px, bg, 0.15):
+				img.set_pixel(x, y, Color(0, 0, 0, 0))
+	return img
+
+
+## Detect background color from the 4 corner pixels (averaged).
+func _detect_bg_color(img: Image) -> Color:
+	var w := img.get_width()
+	var h := img.get_height()
+	var avg := Color(0, 0, 0, 1)
+	var corners := [
+		img.get_pixel(0, 0),
+		img.get_pixel(w - 1, 0),
+		img.get_pixel(0, h - 1),
+		img.get_pixel(w - 1, h - 1),
+	]
+	for c in corners:
+		avg.r += c.r
+		avg.g += c.g
+		avg.b += c.b
+	avg.r /= 4.0
+	avg.g /= 4.0
+	avg.b /= 4.0
+	return avg
+
+
+## Returns true if colors are within threshold on all channels.
+func _color_similar(a: Color, b: Color, threshold: float) -> bool:
+	return abs(a.r - b.r) < threshold and abs(a.g - b.g) < threshold and abs(a.b - b.b) < threshold
+
+
+## Stage C: Send sprite sheet to Flash Vision to detect exact frame boundaries.
+func _analyze_frame_bounds(img: Image, fallback_metadata: Dictionary) -> void:
+	var png_bytes := img.save_png_to_buffer()
+	var base64_img := Marshalls.raw_to_base64(png_bytes)
+	
+	var persp: String = _current_sprite_spec.get("perspective", "").to_lower()
+	var is_topdown: bool = "top-down" in persp
+	
+	var grid_desc: String
+	if is_topdown:
+		grid_desc = "4 rows x 4 columns (row0=DOWN, row1=LEFT, row2=RIGHT, row3=UP)"
+	else:
+		grid_desc = "1 row x 7 columns (col0=idle, col1-4=walk, col5-6=jump)"
+	
+	var fw: int = fallback_metadata.get("frame_width", 64)
+	var fh: int = fallback_metadata.get("frame_height", 64)
+	
+	var prompt: String = ("You are analyzing a pixel art sprite sheet image.\n"
+		+ "Expected layout: " + grid_desc + "\n"
+		+ "The image is " + str(img.get_width()) + "x" + str(img.get_height()) + " pixels.\n"
+		+ "Estimated frame size: " + str(fw) + "x" + str(fh) + " pixels.\n\n"
+		+ "Carefully identify the exact pixel boundary (x, y, w, h) of each animation frame.\n"
+		+ "Each frame should contain exactly ONE character pose with transparent borders.\n"
+		+ "Return ONLY valid JSON, no markdown, no explanation:\n"
+		+ "{\"frames\":[{\"index\":0,\"x\":0,\"y\":0,\"w\":" + str(fw) + ",\"h\":" + str(fh) + "}],"
+		+ "\"grid_cols\":4,\"grid_rows\":4}")
+	
+	var url := GEMINI_BASE_URL + MODEL_FLASH + ":generateContent?key=" + api_key
+	var request_body := {
+		"contents": [{
+			"parts": [
+				{"text": prompt},
+				{"inlineData": {"mimeType": "image/png", "data": base64_img}}
+			]
+		}],
+		"generationConfig": {"temperature": 0.1, "maxOutputTokens": 2048}
+	}
+	
+	print("[GeminiAPI] Stage C: Flash Vision frame analysis...")
+	var err := _http_analyze.request(url, ["Content-Type: application/json"], HTTPClient.METHOD_POST, JSON.stringify(request_body))
+	if err != OK:
+		print("[GeminiAPI] ⚠️ Vision analysis HTTP error, using fallback")
+		sprite_generated.emit(_pending_analysis_image, fallback_metadata)
+
+
+## Callback: Flash Vision returned frame boundary JSON.
+func _on_analyze_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	var fb_meta := _pending_analysis_metadata
+	var image := _pending_analysis_image
+	
+	if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
+		print("[GeminiAPI] ⚠️ Vision analysis failed (%d / HTTP %d), using math fallback" % [result, response_code])
+		sprite_generated.emit(image, fb_meta)
+		return
+	
+	# Extract JSON from response
+	var raw_text := _extract_text_from_response(body)
+	raw_text = raw_text.replace("```json", "").replace("```", "").strip_edges()
+	
+	var jobj := JSON.new()
+	if jobj.parse(raw_text) != OK:
+		print("[GeminiAPI] ⚠️ Vision JSON parse failed, using fallback. Raw: " + raw_text.substr(0, 200))
+		sprite_generated.emit(image, fb_meta)
+		return
+	
+	var analysis: Dictionary = jobj.data
+	var frames_data: Array = analysis.get("frames", [])
+	
+	if frames_data.is_empty():
+		print("[GeminiAPI] ⚠️ Vision returned empty frames, using fallback")
+		sprite_generated.emit(image, fb_meta)
+		return
+	
+	# Build frame_rects from Vision output
+	var frame_rects: Array = []
+	for fd in frames_data:
+		frame_rects.append({
+			"x": int(fd.get("x", 0)),
+			"y": int(fd.get("y", 0)),
+			"w": int(fd.get("w", fb_meta.get("frame_width", 64))),
+			"h": int(fd.get("h", fb_meta.get("frame_height", 64)))
+		})
+	
+	var enhanced_meta := fb_meta.duplicate()
+	enhanced_meta["frame_rects"] = frame_rects
+	if not frame_rects.is_empty():
+		enhanced_meta["frame_width"] = frame_rects[0]["w"]
+		enhanced_meta["frame_height"] = frame_rects[0]["h"]
+	
+	print("[GeminiAPI] ✅ Vision: %d frames detected" % frame_rects.size())
+	sprite_generated.emit(image, enhanced_meta)
 
 
 func _on_modify_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:

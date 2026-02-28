@@ -185,23 +185,36 @@ func load_sprite_sheet(image: Image, metadata: Dictionary) -> void:
 	var frames: Array[Image] = []
 	var sheet_width := image.get_width()
 	var sheet_height := image.get_height()
-	var cols := sheet_width / frame_w
-	var rows := sheet_height / frame_h
-	var total_frames := cols * rows
 	
-	for i in range(total_frames):
-		var col := i % cols
-		var row := i / cols
-		var frame_rect := Rect2i(col * frame_w, row * frame_h, frame_w, frame_h)
-		
-		# Clamp to image bounds
-		if frame_rect.position.x + frame_rect.size.x > sheet_width:
-			continue
-		if frame_rect.position.y + frame_rect.size.y > sheet_height:
-			continue
-		
-		var frame_image := image.get_region(frame_rect)
-		frames.append(frame_image)
+	# Prefer Vision-detected frame_rects over math-based uniform grid
+	var frame_rects_raw: Array = metadata.get("frame_rects", [])
+	
+	if not frame_rects_raw.is_empty():
+		# Use exact Vision-detected boundaries
+		print("[Player] Using Vision-detected frame boundaries (%d frames)" % frame_rects_raw.size())
+		for fd in frame_rects_raw:
+			var fx: int = fd.get("x", 0)
+			var fy: int = fd.get("y", 0)
+			var fw2: int = fd.get("w", frame_w)
+			var fh2: int = fd.get("h", frame_h)
+			var rect := Rect2i(fx, fy, fw2, fh2)
+			if fx + fw2 <= sheet_width and fy + fh2 <= sheet_height:
+				frames.append(image.get_region(rect))
+	else:
+		# Fallback: uniform math-based grid
+		print("[Player] Using math-based grid slicing")
+		var cols := sheet_width / frame_w
+		var rows := sheet_height / frame_h
+		var total_frames := cols * rows
+		for i in range(total_frames):
+			var col := i % cols
+			var row := i / cols
+			var frame_rect := Rect2i(col * frame_w, row * frame_h, frame_w, frame_h)
+			if frame_rect.position.x + frame_rect.size.x > sheet_width:
+				continue
+			if frame_rect.position.y + frame_rect.size.y > sheet_height:
+				continue
+			frames.append(image.get_region(frame_rect))
 	
 	if frames.is_empty():
 		push_error("No frames extracted from sprite sheet")
