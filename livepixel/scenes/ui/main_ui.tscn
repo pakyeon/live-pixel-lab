@@ -1,0 +1,385 @@
+[gd_scene load_steps=7 format=3 uid="uid://main_ui_scene"]
+
+[ext_resource type="Script" path="res://scripts/ui/main_ui.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/ui/creator_panel.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/ui/chat_panel.gd" id="3"]
+
+[sub_resource type="StyleBoxFlat" id="panel_dark"]
+bg_color = Color(0.08, 0.07, 0.14, 0.95)
+border_width_right = 1
+border_color = Color(0.35, 0.24, 0.76, 0.4)
+corner_radius_top_left = 0
+corner_radius_top_right = 0
+corner_radius_bottom_right = 0
+corner_radius_bottom_left = 0
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+
+[sub_resource type="StyleBoxFlat" id="panel_chat"]
+bg_color = Color(0.08, 0.07, 0.14, 0.95)
+border_width_left = 1
+border_color = Color(0.35, 0.24, 0.76, 0.4)
+content_margin_left = 0.0
+content_margin_top = 0.0
+content_margin_right = 0.0
+content_margin_bottom = 0.0
+
+[sub_resource type="StyleBoxFlat" id="button_style"]
+bg_color = Color(0.35, 0.24, 0.76, 1.0)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+
+[node name="MainUI" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.047, 0.043, 0.11, 1)
+
+[node name="HSplitContainer" type="HSplitContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+dragger_visibility = 1
+
+[node name="CreatorPanel" type="PanelContainer" parent="HSplitContainer"]
+custom_minimum_size = Vector2(280, 0)
+layout_mode = 2
+size_flags_stretch_ratio = 0.28
+theme_override_styles/panel = SubResource("panel_dark")
+script = ExtResource("2")
+
+[node name="MarginContainer" type="MarginContainer" parent="HSplitContainer/CreatorPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="ScrollContainer" type="ScrollContainer" parent="HSplitContainer/CreatorPanel/MarginContainer"]
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="TitleLabel" type="Label" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+text = "🎨 Character Creator"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 15
+theme_override_colors/font_color = Color(0.55, 0.36, 0.96, 1)
+
+[node name="Sep1" type="HSeparator" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/separator_color = Color(0.35, 0.24, 0.76, 0.3)
+
+[node name="RefLabel" type="Label" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+text = "Reference Image (Optional)"
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.6, 0.6, 0.7, 1)
+
+[node name="RefImageContainer" type="HBoxContainer" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="RefImageButton" type="Button" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer/RefImageContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "📁 Upload Image"
+theme_override_font_sizes/font_size = 12
+
+[node name="ClearRefButton" type="Button" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer/RefImageContainer"]
+visible = false
+layout_mode = 2
+text = "✕"
+theme_override_font_sizes/font_size = 12
+
+[node name="RefImagePreview" type="TextureRect" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer/RefImageContainer"]
+visible = false
+custom_minimum_size = Vector2(60, 60)
+layout_mode = 2
+stretch_mode = 5
+expand_mode = 3
+texture_filter = 0
+
+[node name="Sep2" type="HSeparator" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/separator_color = Color(0.35, 0.24, 0.76, 0.15)
+
+[node name="DesignLabel" type="Label" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+text = "Character Design"
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.6, 0.6, 0.7, 1)
+
+[node name="PromptInput" type="TextEdit" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 70)
+layout_mode = 2
+text = "Yellow banana character, cute, chibi style"
+placeholder_text = "Describe character appearance..."
+wrap_mode = 1
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.9, 0.9, 0.95, 1)
+
+[node name="StyleContainer" type="HBoxContainer" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="StyleLabel" type="Label" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer/StyleContainer"]
+layout_mode = 2
+text = "Style:"
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.6, 0.6, 0.7, 1)
+
+[node name="BitStyleButton" type="OptionButton" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer/StyleContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 11
+
+[node name="FrameContainer" type="HBoxContainer" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="FrameLabel" type="Label" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer/FrameContainer"]
+layout_mode = 2
+text = "Frame:"
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.6, 0.6, 0.7, 1)
+
+[node name="FrameResButton" type="OptionButton" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer/FrameContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 11
+
+[node name="PerspContainer" type="HBoxContainer" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="PerspLabel" type="Label" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer/PerspContainer"]
+layout_mode = 2
+text = "View:"
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.6, 0.6, 0.7, 1)
+
+[node name="PerspectiveButton" type="OptionButton" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer/PerspContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 11
+
+[node name="DetailsLabel" type="Label" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+text = "Detail Requirements (Optional)"
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.6, 0.6, 0.7, 1)
+
+[node name="DetailsInput" type="TextEdit" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+placeholder_text = "Palette, outlines, shading, style refs..."
+wrap_mode = 1
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.85, 0.85, 0.9, 1)
+
+[node name="GenerateButton" type="Button" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+text = "✨ Generate Sprite"
+theme_override_styles/normal = SubResource("button_style")
+theme_override_font_sizes/font_size = 13
+
+[node name="CreatorStatus" type="Label" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+text = ""
+autowrap_mode = 2
+theme_override_font_sizes/font_size = 11
+
+[node name="Sep3" type="HSeparator" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/separator_color = Color(0.35, 0.24, 0.76, 0.3)
+
+[node name="PreviewLabel" type="Label" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+text = "Sprite Preview"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.6, 0.6, 0.7, 1)
+
+[node name="PreviewContainer" type="CenterContainer" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+
+[node name="PreviewTexture" type="TextureRect" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer/PreviewContainer"]
+visible = false
+layout_mode = 2
+stretch_mode = 5
+expand_mode = 1
+texture_filter = 0
+
+[node name="PlayButton" type="Button" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+visible = false
+layout_mode = 2
+text = "▶ Play on Field"
+theme_override_styles/normal = SubResource("button_style")
+theme_override_font_sizes/font_size = 13
+
+[node name="FileDialog" type="FileDialog" parent="HSplitContainer/CreatorPanel"]
+title = "Select Reference Image"
+size = Vector2i(600, 400)
+access = 2
+file_mode = 0
+filters = PackedStringArray("*.png ; PNG Images", "*.jpg ; JPEG Images", "*.jpeg ; JPEG Images", "*.webp ; WebP Images")
+
+[node name="GameViewContainer" type="PanelContainer" parent="HSplitContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.0
+
+[node name="SubViewportContainer" type="SubViewportContainer" parent="HSplitContainer/GameViewContainer"]
+layout_mode = 2
+stretch = true
+stretch_shrink = 1
+
+[node name="SubViewport" type="SubViewport" parent="HSplitContainer/GameViewContainer/SubViewportContainer"]
+handle_input_locally = false
+canvas_item_default_texture_filter = 0
+size = Vector2i(768, 720)
+render_target_update_mode = 4
+
+[node name="ChatPanel" type="PanelContainer" parent="HSplitContainer"]
+custom_minimum_size = Vector2(260, 0)
+layout_mode = 2
+size_flags_stretch_ratio = 0.25
+theme_override_styles/panel = SubResource("panel_chat")
+script = ExtResource("3")
+
+[node name="MarginContainer" type="MarginContainer" parent="HSplitContainer/ChatPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBoxContainer" type="VBoxContainer" parent="HSplitContainer/ChatPanel/MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ChatTitle" type="Label" parent="HSplitContainer/ChatPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "💬 Live Modify"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.02, 0.71, 0.83, 1)
+
+[node name="Separator" type="HSeparator" parent="HSplitContainer/ChatPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/separator_color = Color(0.02, 0.71, 0.83, 0.3)
+
+[node name="ScrollContainer" type="ScrollContainer" parent="HSplitContainer/ChatPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="MessageContainer" type="VBoxContainer" parent="HSplitContainer/ChatPanel/MarginContainer/VBoxContainer/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="WelcomeMessage" type="RichTextLabel" parent="HSplitContainer/ChatPanel/MarginContainer/VBoxContainer/ScrollContainer/MessageContainer"]
+layout_mode = 2
+bbcode_enabled = true
+text = "[color=#06b6d4][b]System:[/b][/color] Welcome to LivePixel Lab! Generate a character, then modify it while playing. Try commands like:
+• \"double the jump height\"
+• \"make it faster\"
+• \"add a cape\"
+• \"make the eyes bigger\""
+fit_content = true
+scroll_active = false
+theme_override_font_sizes/normal_font_size = 13
+theme_override_colors/default_color = Color(0.75, 0.75, 0.85, 1)
+
+[node name="StatusLabel" type="Label" parent="HSplitContainer/ChatPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = ""
+theme_override_font_sizes/font_size = 13
+
+[node name="ApplyButton" type="Button" parent="HSplitContainer/ChatPanel/MarginContainer/VBoxContainer"]
+visible = false
+layout_mode = 2
+text = "🔄 Apply New Version"
+theme_override_styles/normal = SubResource("button_style")
+theme_override_font_sizes/font_size = 14
+
+[node name="InputContainer" type="HBoxContainer" parent="HSplitContainer/ChatPanel/MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="LineEdit" type="LineEdit" parent="HSplitContainer/ChatPanel/MarginContainer/VBoxContainer/InputContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Type changes..."
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.9, 0.9, 0.95, 1)
+
+[node name="SendButton" type="Button" parent="HSplitContainer/ChatPanel/MarginContainer/VBoxContainer/InputContainer"]
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+text = "→"
+theme_override_font_sizes/font_size = 16
+
+[node name="FadeOverlay" type="ColorRect" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0)
+mouse_filter = 2
+
+[node name="TitleScreen" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="TitleVBox" type="VBoxContainer" parent="TitleScreen"]
+layout_mode = 2
+theme_override_constants/separation = 20
+alignment = 1
+
+[node name="Logo" type="Label" parent="TitleScreen/TitleVBox"]
+layout_mode = 2
+text = "🎮 LivePixel Lab"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 36
+theme_override_colors/font_color = Color(0.55, 0.36, 0.96, 1)
+
+[node name="Subtitle" type="Label" parent="TitleScreen/TitleVBox"]
+layout_mode = 2
+text = "Create • Play • Modify — All in Real-Time"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.6, 0.6, 0.75, 1)
+
+[node name="Instruction" type="Label" parent="TitleScreen/TitleVBox"]
+layout_mode = 2
+text = "← Describe a character and click Generate to begin"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.5, 0.5, 0.6, 1)
