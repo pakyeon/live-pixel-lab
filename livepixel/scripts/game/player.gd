@@ -115,26 +115,58 @@ func _update_animation() -> void:
 	var is_topdown: bool = GameManager.current_perspective == "top-down"
 	
 	if is_topdown:
-		# Top-down: walk if moving, idle if not
+		# Top-down: pick direction-based animation
 		if velocity.length() > 10.0:
+			var anim_name := _get_topdown_walk_anim(velocity)
+			if animated_sprite.sprite_frames.has_animation(anim_name):
+				animated_sprite.play(anim_name)
+			elif animated_sprite.sprite_frames.has_animation("walk"):
+				animated_sprite.play("walk")
+		else:
+			var idle_name := _get_topdown_idle_anim()
+			if animated_sprite.sprite_frames.has_animation(idle_name):
+				animated_sprite.play(idle_name)
+			elif animated_sprite.sprite_frames.has_animation("idle"):
+				animated_sprite.play("idle")
+	else:
+		# Side-scroller: jump / walk / idle
+		if not is_on_floor():
+			if animated_sprite.sprite_frames.has_animation("jump") and animated_sprite.sprite_frames.get_frame_count("jump") > 0:
+				animated_sprite.play("jump")
+			elif animated_sprite.sprite_frames.has_animation("idle"):
+				animated_sprite.play("idle")
+		elif abs(velocity.x) > 10.0:
 			if animated_sprite.sprite_frames.has_animation("walk"):
 				animated_sprite.play("walk")
 		else:
 			if animated_sprite.sprite_frames.has_animation("idle"):
 				animated_sprite.play("idle")
-	else:
-		# Side-scroller: jump / run / walk / idle
-		if not is_on_floor():
-			if animated_sprite.sprite_frames.has_animation("jump"):
-				animated_sprite.play("jump")
-		elif abs(velocity.x) > 10.0:
-			if abs(velocity.x) > speed * 0.8 and animated_sprite.sprite_frames.has_animation("run"):
-				animated_sprite.play("run")
-			elif animated_sprite.sprite_frames.has_animation("walk"):
-				animated_sprite.play("walk")
+
+
+## Track last facing direction for idle pose
+var _last_direction: String = "down"
+
+## Get the walk animation name based on velocity direction (top-down)
+func _get_topdown_walk_anim(vel: Vector2) -> String:
+	# Determine primary direction
+	if abs(vel.x) > abs(vel.y):
+		if vel.x > 0:
+			_last_direction = "right"
+			return "walk_right"
 		else:
-			if animated_sprite.sprite_frames.has_animation("idle"):
-				animated_sprite.play("idle")
+			_last_direction = "left"
+			return "walk_left"
+	else:
+		if vel.y > 0:
+			_last_direction = "down"
+			return "walk_down"
+		else:
+			_last_direction = "up"
+			return "walk_up"
+
+## Get the idle animation for the last faced direction
+func _get_topdown_idle_anim() -> String:
+	return "idle_" + _last_direction
 
 
 ## Load sprite frames from a sprite sheet image.
@@ -169,18 +201,6 @@ func load_sprite_sheet(image: Image, metadata: Dictionary) -> void:
 			continue
 		
 		var frame_image := image.get_region(frame_rect)
-		
-		# Debug: check if frame is completely blank/transparent
-		var is_empty_frame := true
-		for y in range(frame_h):
-			for x in range(frame_w):
-				if frame_image.get_pixel(x, y).a > 0.05:
-					is_empty_frame = false
-					break
-			if not is_empty_frame: break
-			
-		print("[Player] Frame %d rect %s - Is empty? %s" % [i, str(frame_rect), str(is_empty_frame)])
-		
 		frames.append(frame_image)
 	
 	if frames.is_empty():
@@ -196,39 +216,85 @@ func load_sprite_sheet(image: Image, metadata: Dictionary) -> void:
 	if sprite_frames.has_animation("default"):
 		sprite_frames.remove_animation("default")
 	
-	# Add idle animation
-	sprite_frames.add_animation("idle")
-	sprite_frames.set_animation_speed("idle", fps)
-	sprite_frames.set_animation_loop("idle", true)
-	for idx in idle_frames:
-		if idx < frames.size():
-			var tex := ImageTexture.create_from_image(frames[idx])
+	var is_topdown: bool = GameManager.current_perspective == "top-down"
+	
+	if is_topdown and frames.size() >= 16:
+		# --- Top-Down: 4 rows × 4 cols direction-based animations ---
+		# Row 0 (frames 0-3): DOWN
+		# Row 1 (frames 4-7): LEFT
+		# Row 2 (frames 8-11): RIGHT
+		# Row 3 (frames 12-15): UP
+		var directions := ["down", "left", "right", "up"]
+		for dir_idx in range(4):
+			var base := dir_idx * 4
+			
+			# idle_<dir> = first frame of this row
+			var idle_name: String = "idle_" + directions[dir_idx]
+			sprite_frames.add_animation(idle_name)
+			sprite_frames.set_animation_speed(idle_name, fps)
+			sprite_frames.set_animation_loop(idle_name, true)
+			if base < frames.size():
+				var tex := ImageTexture.create_from_image(frames[base])
+				sprite_frames.add_frame(idle_name, tex)
+			
+			# walk_<dir> = all 4 frames of this row
+			var walk_name: String = "walk_" + directions[dir_idx]
+			sprite_frames.add_animation(walk_name)
+			sprite_frames.set_animation_speed(walk_name, fps)
+			sprite_frames.set_animation_loop(walk_name, true)
+			for f in range(4):
+				var idx := base + f
+				if idx < frames.size():
+					var tex := ImageTexture.create_from_image(frames[idx])
+					sprite_frames.add_frame(walk_name, tex)
+		
+		# Also add generic "idle" as alias for idle_down
+		sprite_frames.add_animation("idle")
+		sprite_frames.set_animation_speed("idle", fps)
+		sprite_frames.set_animation_loop("idle", true)
+		if frames.size() > 0:
+			var tex := ImageTexture.create_from_image(frames[0])
 			sprite_frames.add_frame("idle", tex)
-	
-	# Add walk animation
-	sprite_frames.add_animation("walk")
-	sprite_frames.set_animation_speed("walk", fps)
-	sprite_frames.set_animation_loop("walk", true)
-	for idx in walk_frames:
-		if idx < frames.size():
-			var tex := ImageTexture.create_from_image(frames[idx])
-			sprite_frames.add_frame("walk", tex)
-	
-	# Add jump animation
-	sprite_frames.add_animation("jump")
-	sprite_frames.set_animation_speed("jump", fps)
-	sprite_frames.set_animation_loop("jump", false)
-	for idx in jump_frames:
-		if idx < frames.size():
-			var tex := ImageTexture.create_from_image(frames[idx])
-			sprite_frames.add_frame("jump", tex)
+		
+		print("[Player] Created top-down animations: idle/walk × 4 directions")
+	else:
+		# --- Side-Scroller: idle / walk / jump ---
+		# Idle
+		sprite_frames.add_animation("idle")
+		sprite_frames.set_animation_speed("idle", fps)
+		sprite_frames.set_animation_loop("idle", true)
+		for idx in idle_frames:
+			if idx < frames.size():
+				var tex := ImageTexture.create_from_image(frames[idx])
+				sprite_frames.add_frame("idle", tex)
+		
+		# Walk
+		sprite_frames.add_animation("walk")
+		sprite_frames.set_animation_speed("walk", fps)
+		sprite_frames.set_animation_loop("walk", true)
+		for idx in walk_frames:
+			if idx < frames.size():
+				var tex := ImageTexture.create_from_image(frames[idx])
+				sprite_frames.add_frame("walk", tex)
+		
+		# Jump (only if frames exist)
+		if not jump_frames.is_empty():
+			sprite_frames.add_animation("jump")
+			sprite_frames.set_animation_speed("jump", fps)
+			sprite_frames.set_animation_loop("jump", false)
+			for idx in jump_frames:
+				if idx < frames.size():
+					var tex := ImageTexture.create_from_image(frames[idx])
+					sprite_frames.add_frame("jump", tex)
+		
+		print("[Player] Created side-scroller animations: idle(%d) walk(%d) jump(%d)" % [
+			idle_frames.size(), walk_frames.size(), jump_frames.size()])
 	
 	# Apply to AnimatedSprite2D
 	animated_sprite.sprite_frames = sprite_frames
 	animated_sprite.play("idle")
 	
 	# --- Auto-scale massive frames to fit the game world ---
-	# We want the character to be roughly 100-128 pixels tall max in the game
 	var target_height := 120.0
 	var scale_factor := 1.0
 	if frame_h > target_height:
@@ -242,7 +308,6 @@ func load_sprite_sheet(image: Image, metadata: Dictionary) -> void:
 	var shape := RectangleShape2D.new()
 	shape.size = Vector2(frame_w * 0.6 * scale_factor, frame_h * 0.9 * scale_factor)
 	collision_shape.shape = shape
-	# Move the collision shape up so the character stands on the ground
 	collision_shape.position = Vector2(0, -shape.size.y / 2.0)
 	
 	_is_sprite_loaded = true
