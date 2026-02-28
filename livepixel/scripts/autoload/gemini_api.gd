@@ -846,7 +846,11 @@ func _analyze_frame_bounds(img: Image, fallback_metadata: Dictionary) -> void:
 				{"inlineData": {"mimeType": "image/png", "data": base64_img}}
 			]
 		}],
-		"generationConfig": {"temperature": 0.1, "maxOutputTokens": 2048}
+		"generationConfig": {
+			"temperature": 0.1, 
+			"maxOutputTokens": 2048,
+			"responseMimeType": "application/json"
+		}
 	}
 	
 	print("[GeminiAPI] Stage C: Flash Vision frame analysis...")
