@@ -27,7 +27,7 @@ LivePixel Lab is a **real-time pixel game creation sandbox** built with **Godot 
 └────────────────────┬─────────────────────────────────┘
                      │
           ┌──────────▼──────────┐
-          │  Step 1: Pro LLM    │  gemini-3-pro-preview
+          │  Step 1: Pro LLM    │  gemini-3.1-pro-preview
           │  Prompt Refinement  │  → Expert-level detailed prompt
           └──────────┬──────────┘
                      │
@@ -92,15 +92,15 @@ cd livepixel
 | **2-Step LLM Pipeline** | Pro model refines your short description into a detailed prompt before image generation |
 | **3 Perspectives** | Side-Scroller, Top-Down RPG, Isometric |
 | **3 Bit Styles** | 8-bit classic, 16-bit retro, 32-bit modern |
-| **6 Frame Resolutions** | 16×16 to 128×128 |
-| **Reference Images** | Upload a reference image to guide the AI's output |
-| **Dynamic Frame Extraction** | Automatically slices any resolution sprite sheet into correct frames |
+| **3 Grid Layouts** | 4x4, 4x8, and 8x8 options |
+| **Reference Images** | Upload a reference image to guide the AI's output without breaking the grid structure |
+| **Clean Output** | Flood-Fill background removal and Nearest-Neighbor downscaling to exact frame sizes |
+| **Pro Vision Analysis** | Automatically slices the output sprite sheet into idle, walk, and jump frames |
 
 ### Game Field
 | Feature | Description |
 |---------|-------------|
 | **Instant Play** | Generated sprites are immediately playable on a game field |
-| **Auto-Scaling** | High-res sprites are proportionally scaled to fit the game world |
 | **Side-Scroller** | Platformer physics with gravity, jump, and walk |
 | **Top-Down RPG** | 4-directional movement on an open field |
 
@@ -109,7 +109,7 @@ cd livepixel
 |---------|-------------|
 | **Chat Commands** | Modify sprite attributes via natural language while playing |
 | **Hot-Reload** | Sprite updates are applied without restarting the game |
-| **Asset Export** | Export finished sprites as PNG sprite sheets |
+| **Asset Export** | Export finished sprites as a raw PNG sprite sheet directly to your computer |
 
 ---
 

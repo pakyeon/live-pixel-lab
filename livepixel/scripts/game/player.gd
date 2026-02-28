@@ -232,36 +232,62 @@ func load_sprite_sheet(image: Image, metadata: Dictionary) -> void:
 	var is_topdown: bool = GameManager.current_perspective == "top-down"
 	
 	if is_topdown and frames.size() >= 16:
-		# --- Top-Down: 4 rows × 4 cols direction-based animations ---
-		# Row 0 (frames 0-3): DOWN
-		# Row 1 (frames 4-7): LEFT
-		# Row 2 (frames 8-11): RIGHT
-		# Row 3 (frames 12-15): UP
-		var directions := ["down", "left", "right", "up"]
-		for dir_idx in range(4):
-			var base := dir_idx * 4
-			
-			# idle_<dir> = first frame of this row
-			var idle_name: String = "idle_" + directions[dir_idx]
-			sprite_frames.add_animation(idle_name)
-			sprite_frames.set_animation_speed(idle_name, fps)
-			sprite_frames.set_animation_loop(idle_name, true)
-			if base < frames.size():
-				var tex := ImageTexture.create_from_image(frames[base])
-				sprite_frames.add_frame(idle_name, tex)
-			
-			# walk_<dir> = all 4 frames of this row
-			var walk_name: String = "walk_" + directions[dir_idx]
-			sprite_frames.add_animation(walk_name)
-			sprite_frames.set_animation_speed(walk_name, fps)
-			sprite_frames.set_animation_loop(walk_name, true)
-			for f in range(4):
-				var idx := base + f
-				if idx < frames.size():
-					var tex := ImageTexture.create_from_image(frames[idx])
-					sprite_frames.add_frame(walk_name, tex)
+		# --- Top-Down: Use LLM-detected frame roles when available ---
+		# Check if metadata has role-based assignments from LLM
+		var has_dynamic_roles: bool = not idle_frames.is_empty() or not walk_frames.is_empty()
 		
-		# Also add generic "idle" as alias for idle_down
+		if has_dynamic_roles and frames.size() >= 16:
+			# Dynamic: Build direction-based animations from frame indices
+			# Assume 4 rows × N cols: row0=DOWN, row1=LEFT, row2=RIGHT, row3=UP
+			var cols: int = frames.size() / 4
+			var directions := ["down", "left", "right", "up"]
+			for dir_idx in range(4):
+				var base := dir_idx * cols
+				
+				# idle_<dir> = first frame of this row
+				var idle_name: String = "idle_" + directions[dir_idx]
+				sprite_frames.add_animation(idle_name)
+				sprite_frames.set_animation_speed(idle_name, fps)
+				sprite_frames.set_animation_loop(idle_name, true)
+				if base < frames.size():
+					var tex := ImageTexture.create_from_image(frames[base])
+					sprite_frames.add_frame(idle_name, tex)
+				
+				# walk_<dir> = all frames of this row
+				var walk_name: String = "walk_" + directions[dir_idx]
+				sprite_frames.add_animation(walk_name)
+				sprite_frames.set_animation_speed(walk_name, fps)
+				sprite_frames.set_animation_loop(walk_name, true)
+				for f in range(cols):
+					var idx := base + f
+					if idx < frames.size():
+						var tex := ImageTexture.create_from_image(frames[idx])
+						sprite_frames.add_frame(walk_name, tex)
+		else:
+			# Fallback: hardcoded 4x4 directional layout
+			var directions := ["down", "left", "right", "up"]
+			for dir_idx in range(4):
+				var base := dir_idx * 4
+				
+				var idle_name: String = "idle_" + directions[dir_idx]
+				sprite_frames.add_animation(idle_name)
+				sprite_frames.set_animation_speed(idle_name, fps)
+				sprite_frames.set_animation_loop(idle_name, true)
+				if base < frames.size():
+					var tex := ImageTexture.create_from_image(frames[base])
+					sprite_frames.add_frame(idle_name, tex)
+				
+				var walk_name: String = "walk_" + directions[dir_idx]
+				sprite_frames.add_animation(walk_name)
+				sprite_frames.set_animation_speed(walk_name, fps)
+				sprite_frames.set_animation_loop(walk_name, true)
+				for f in range(4):
+					var idx := base + f
+					if idx < frames.size():
+						var tex := ImageTexture.create_from_image(frames[idx])
+						sprite_frames.add_frame(walk_name, tex)
+		
+		# Generic "idle" as alias for idle_down
 		sprite_frames.add_animation("idle")
 		sprite_frames.set_animation_speed("idle", fps)
 		sprite_frames.set_animation_loop("idle", true)
@@ -269,9 +295,9 @@ func load_sprite_sheet(image: Image, metadata: Dictionary) -> void:
 			var tex := ImageTexture.create_from_image(frames[0])
 			sprite_frames.add_frame("idle", tex)
 		
-		print("[Player] Created top-down animations: idle/walk × 4 directions")
+		print("[Player] Created top-down animations: idle/walk × 4 directions (%d cols)" % (frames.size() / 4))
 	else:
-		# --- Side-Scroller: idle / walk / jump ---
+		# --- Side-Scroller: Use LLM-detected idle/walk/jump assignments ---
 		# Idle
 		sprite_frames.add_animation("idle")
 		sprite_frames.set_animation_speed("idle", fps)

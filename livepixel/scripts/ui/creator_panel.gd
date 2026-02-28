@@ -9,13 +9,15 @@ extends PanelContainer
 
 @onready var details_input: TextEdit = $MarginContainer/ScrollContainer/VBoxContainer/DetailsInput
 @onready var generate_button: Button = $MarginContainer/ScrollContainer/VBoxContainer/GenerateButton
-@onready var play_button: Button = $MarginContainer/ScrollContainer/VBoxContainer/PlayButton
+@onready var play_button: Button = $MarginContainer/ScrollContainer/VBoxContainer/ActionButtons/PlayButton
+@onready var export_button: Button = $MarginContainer/ScrollContainer/VBoxContainer/ActionButtons/ExportButton
 @onready var preview_texture: TextureRect = $MarginContainer/ScrollContainer/VBoxContainer/PreviewContainer/PreviewTexture
 @onready var status_label: Label = $MarginContainer/ScrollContainer/VBoxContainer/CreatorStatus
 @onready var ref_image_button: Button = $MarginContainer/ScrollContainer/VBoxContainer/RefImageContainer/RefImageButton
 @onready var ref_image_preview: TextureRect = $MarginContainer/ScrollContainer/VBoxContainer/RefImageContainer/RefImagePreview
 @onready var ref_clear_button: Button = $MarginContainer/ScrollContainer/VBoxContainer/RefImageContainer/ClearRefButton
 @onready var file_dialog: FileDialog = $FileDialog
+@onready var save_file_dialog: FileDialog = $SaveFileDialog
 
 var _current_image: Image = null
 var _current_metadata: Dictionary = {}
@@ -30,13 +32,11 @@ func _ready() -> void:
 	bit_style_button.add_item("8-bit (Classic)")
 	bit_style_button.selected = 0
 	
-	# Frame resolution options
+	# Frame resolution options (4x4 to 8x8)
 	frame_res_button.clear()
-	frame_res_button.add_item("64x64")
-	frame_res_button.add_item("32x32")
-	frame_res_button.add_item("32x48")
-	frame_res_button.add_item("48x48")
-	frame_res_button.add_item("128x128")
+	frame_res_button.add_item("4x4")
+	frame_res_button.add_item("4x8")
+	frame_res_button.add_item("8x8")
 	frame_res_button.selected = 0
 	
 	# Perspective options
@@ -50,6 +50,7 @@ func _ready() -> void:
 
 	
 	play_button.visible = false
+	export_button.visible = false
 	status_label.text = ""
 	ref_image_preview.visible = false
 	ref_clear_button.visible = false
@@ -57,9 +58,11 @@ func _ready() -> void:
 	# Connect signals
 	generate_button.pressed.connect(_on_generate_pressed)
 	play_button.pressed.connect(_on_play_pressed)
+	export_button.pressed.connect(_on_export_pressed)
 	ref_image_button.pressed.connect(_on_ref_image_pressed)
 	ref_clear_button.pressed.connect(_on_clear_ref_pressed)
 	file_dialog.file_selected.connect(_on_file_selected)
+	save_file_dialog.file_selected.connect(_on_save_file_selected)
 	
 	GeminiAPI.sprite_generated.connect(_on_sprite_generated)
 	GeminiAPI.generation_started.connect(_on_generation_started)
@@ -133,6 +136,29 @@ func _on_play_pressed() -> void:
 		main_ui.start_game_with_sprite(_current_image, _current_metadata)
 
 
+func _on_export_pressed() -> void:
+	if _current_image == null:
+		return
+	
+	var timestamp := Time.get_datetime_string_from_system().replace(":", "").replace("-", "").replace("T", "_")
+	var default_name := "livepixel_sprite_%s.png" % timestamp
+	save_file_dialog.current_file = default_name
+	save_file_dialog.popup_centered()
+
+
+func _on_save_file_selected(path: String) -> void:
+	if _current_image == null:
+		return
+		
+	var err := _current_image.save_png(path)
+	if err == OK:
+		status_label.text = "✅ Sprite saved to: " + path.get_file()
+		status_label.add_theme_color_override("font_color", Color("34d399"))
+	else:
+		status_label.text = "❌ Failed to save sprite"
+		status_label.add_theme_color_override("font_color", Color("ef4444"))
+
+
 func _on_ref_image_pressed() -> void:
 	file_dialog.popup_centered()
 
@@ -182,23 +208,30 @@ func _on_sprite_generated(image: Image, metadata: Dictionary) -> void:
 	_current_image = image
 	_current_metadata = metadata
 	
-	# Extract the first frame for preview (instead of showing the full sheet)
-	var fw: int = metadata.get("frame_width", 64)
-	var fh: int = metadata.get("frame_height", 64)
-	var preview_img := image.get_region(Rect2i(0, 0, fw, fh))
+	# Show the full sprite sheet in preview (scaled to fit)
+	var preview_img := image.duplicate()
+	var max_preview_size := 256
+	var scale_factor := 1.0
+	if preview_img.get_width() > max_preview_size or preview_img.get_height() > max_preview_size:
+		var scale_w := float(max_preview_size) / float(preview_img.get_width())
+		var scale_h := float(max_preview_size) / float(preview_img.get_height())
+		scale_factor = min(scale_w, scale_h)
+	elif preview_img.get_width() < 128:
+		scale_factor = float(128) / float(preview_img.get_width())
 	
-	# Scale up for visibility if the frame is small
-	if preview_img.get_width() < 128:
-		var scale_up := 128 / preview_img.get_width()
-		preview_img.resize(preview_img.get_width() * scale_up, preview_img.get_height() * scale_up, Image.INTERPOLATE_NEAREST)
+	if scale_factor != 1.0:
+		var new_w := int(preview_img.get_width() * scale_factor)
+		var new_h := int(preview_img.get_height() * scale_factor)
+		preview_img.resize(new_w, new_h, Image.INTERPOLATE_NEAREST)
 	
 	var tex := ImageTexture.create_from_image(preview_img)
 	preview_texture.texture = tex
 	preview_texture.visible = true
-	print("[CreatorPanel] Preview set: %dx%d (frame 0)" % [preview_img.get_width(), preview_img.get_height()])
+	print("[CreatorPanel] Preview set: %dx%d (full sheet)" % [preview_img.get_width(), preview_img.get_height()])
 	
 	play_button.visible = true
-	status_label.text = "✅ Sprite ready! Click Play to test."
+	export_button.visible = true
+	status_label.text = "✅ Sprite ready! Click Play to test or Export."
 	status_label.add_theme_color_override("font_color", Color("34d399"))
 
 

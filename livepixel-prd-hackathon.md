@@ -121,15 +121,10 @@ This project aims to "blur the boundary between playing and creating, and provid
 
 ### 4.6 Asset Export Feature
 - **Output Format**
-  - PNG sprite sheet (including transparency, 32-bit+).
-  - Frame metadata (JSON, YAML, etc.):
-    - `rect` (x, y, w, h) for each frame.
-    - Frame sequences per behavior.
-    - Playback speed, loop status.
+  - PNG sprite sheet (including transparency, 32-bit+, with precise frame resizing via nearest-neighbor interpolation).
+  - Frame metadata internally tracked for engine-play.
   - Engine-specific templates:
-    - Unity: Guides or utility scripts for generating Animator/AnimationClip.
-    - Unreal: Setup guides for Paper2D Sprites/Flipbooks.
-    - RPG Maker: Conversion options tailored to character sheet specifications.
+    - Unity/Unreal/RPG Maker integration planned for post-hackathon. User can currently download the raw PNG sprite sheet directly to their local filesystem for immediate use in any engine.
 
 ---
 
@@ -167,13 +162,17 @@ All components run inside a single Godot 4.x application — no separate web fro
    - API key loaded from environment variable `GEMINI_API_KEY` or `user://api_key.txt`
 3. **Prompt Interpreter (Text → Spec) — Autoload: GeminiAPI**
    - Routes to `gemini-3-flash-preview` for simple parameter changes
-   - Routes to `gemini-3-pro-preview` for complex character concepts
+   - Routes to `gemini-3.1-pro-preview` for complex character concepts
    - Returns structured JSON with multipliers (speed, jump, gravity, scale, fps)
 4. **Sprite Generation/Modification Module — Autoload: GeminiAPI**
-   - Uses `gemini-3.1-flash-image-preview` (Nano Banana) for sprite sheet generation and modification
-   - Sends text + optional reference image → receives base64 PNG sprite sheet
-   - Sprite sheet parsed into `SpriteFrames` resource with idle/walk/jump animations
-5. **Game State Manager — Autoload: GameManager**
+   - Uses `gemini-3.1-flash-image-preview` (Nano Banana) for sprite sheet generation.
+   - Reference images are sent to Pro for analysis, NOT to Nano Banana (to preserve strict grid layouts).
+   - Generates ~1K resolution images which are then processed.
+5. **Image Processing Pipeline — Autoload: GeminiAPI**
+   - **Flood Fill Background Removal**: Scans outward from image edges to find and remove uniform background colors while preserving internal character pixels.
+   - **Precision Resize**: Rescales the raw 1K output down to the user's requested frame resolution (e.g. 4x4 grid of 32x32 frames) using Nearest-Neighbor interpolation.
+   - **Pro Vision Analysis**: Uses `gemini-3.1-pro-preview` vision to map out exact frame bounds and categorize animations (idle, walk, jump).
+6. **Game State Manager — Autoload: GameManager**
    - Manages states: MENU → CREATING → PLAYING → MODIFYING → PLAYING
    - Orchestrates hot-reload: fade overlay → swap SpriteFrames → fade in (position preserved)
 
@@ -195,7 +194,7 @@ All components run inside a single Godot 4.x application — no separate web fro
 - **Lightweight Task LLM: `gemini-3-flash-preview`**
   - Usage: Parsing short prompts, converting simple parameter modification requests (e.g., "double jump height", "set to 6 frames", etc.) into structured specs.
   - Characteristics: Processes small, iterative modification requests during gameplay quickly with low latency and cost.
-- **Complex Task LLM: `gemini-3-pro-preview`**
+- **Complex Task LLM: `gemini-3.1-pro-preview`**
   - Usage: Generating new character concepts, designing behavior sets with complex rules, interpreting long system messages/settings, and handling difficult text interpretations.
   - Characteristics: Maintains consistent project-wide rules and style guides based on higher reasoning performance.
 
@@ -210,7 +209,7 @@ All components run inside a single Godot 4.x application — no separate web fro
 ### 7.3 Model Routing Strategy
 - Automatically routes to the appropriate model based on request type from frontend/backend:
   - **Minor modifications during real-time play** → `gemini-3-flash-preview`
-  - **Designing new character/field concepts, defining complex rules/behaviors** → `gemini-3-pro-preview`
+  - **Designing new character/field concepts, defining complex rules/behaviors** → `gemini-3.1-pro-preview`
   - **Generating and modifying sprites/tilesets** → `gemini-3.1-flash-image-preview`
 - Both requests and responses are converted into internal specs (JSON) to be used consistently across the game runtime (Godot) and asset pipelines.
 
@@ -254,9 +253,9 @@ Supplementary features that improve overall completeness. Lower priority than th
    - Demonstrate the distinct visual style differences per bit rate.
    - Pitch during presentation: "Our technology supports all pixel game styles."
 
-5. **PNG + JSON Export**
-   - Export the current version into a downloadable format.
-   - Showcase files actually being created in the download folder.
+5. **PNG Export**
+   - Export the current version into a downloadable format directly from the UI.
+   - Output uses exact pixel art dimensions (e.g. 128x128 for a 4x4 grid of 32x32 frames) thanks to internal resizing.
    - Allow judges to download and inspect post-presentation.
 
 #### 8.3.3 [Out of Scope] Not in Hackathon Scope: Mention Only
@@ -285,7 +284,7 @@ List of features to actually implement during the hackathon:
 4. ✅ Playable on 1~2 basic fields (Godot default scene)
 5. ✅ Simple parameter modification via chat during play (Flash LLM)
 6. ✅ Session hot reload post-modification (Godot ResourceLoader)
-7. ⚠️ Basic Export in PNG + JSON formats (If time permits)
+7. ✅ Basic Export in PNG format (with automated resizing and background removal pipelines)
 
 ---
 

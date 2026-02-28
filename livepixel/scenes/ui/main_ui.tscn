@@ -233,19 +233,46 @@ stretch_mode = 5
 expand_mode = 1
 texture_filter = 0
 
-[node name="PlayButton" type="Button" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+[node name="ActionButtons" type="HBoxContainer" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="PlayButton" type="Button" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer/ActionButtons"]
 visible = false
 layout_mode = 2
+size_flags_horizontal = 3
 text = "▶ Play on Field"
+theme_override_styles/normal = SubResource("button_style")
+theme_override_font_sizes/font_size = 13
+
+[node name="ExportButton" type="Button" parent="HSplitContainer/CreatorPanel/MarginContainer/ScrollContainer/VBoxContainer/ActionButtons"]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+text = "💾 Export PNG"
 theme_override_styles/normal = SubResource("button_style")
 theme_override_font_sizes/font_size = 13
 
 [node name="FileDialog" type="FileDialog" parent="HSplitContainer/CreatorPanel"]
 title = "Select Reference Image"
+position = Vector2i(0, 36)
 size = Vector2i(600, 400)
-access = 2
+min_size = Vector2i(400, 300)
+ok_button_text = "Open"
+mode_overrides_title = false
 file_mode = 0
+access = 2
 filters = PackedStringArray("*.png ; PNG Images", "*.jpg ; JPEG Images", "*.jpeg ; JPEG Images", "*.webp ; WebP Images")
+
+[node name="SaveFileDialog" type="FileDialog" parent="HSplitContainer/CreatorPanel"]
+title = "Export Sprite Sheet"
+position = Vector2i(0, 36)
+size = Vector2i(600, 400)
+min_size = Vector2i(400, 300)
+ok_button_text = "Save"
+mode_overrides_title = false
+access = 2
+filters = PackedStringArray("*.png ; PNG Images")
 
 [node name="GameViewContainer" type="PanelContainer" parent="HSplitContainer"]
 layout_mode = 2

@@ -16,7 +16,7 @@ const GEMINI_BASE_URL := "https://generativelanguage.googleapis.com/v1beta/model
 ## Model IDs
 const MODEL_IMAGE := "gemini-3.1-flash-image-preview"
 const MODEL_FLASH := "gemini-3-flash-preview"
-const MODEL_PRO := "gemini-3-pro-preview"
+const MODEL_PRO := "gemini-3.1-pro-preview"
 
 var api_key: String = ""
 var _http_sprite: HTTPRequest
@@ -72,49 +72,44 @@ func _ready() -> void:
 	# Create HTTP request nodes
 	_http_sprite = HTTPRequest.new()
 	_http_sprite.name = "HTTPSprite"
-	_http_sprite.timeout = 30.0
-	_http_sprite.use_threads = true
+	_http_sprite.timeout = 120.0
 	add_child(_http_sprite)
 	_http_sprite.request_completed.connect(_on_sprite_request_completed)
 	
 	_http_modify = HTTPRequest.new()
 	_http_modify.name = "HTTPModify"
-	_http_modify.timeout = 30.0
-	_http_modify.use_threads = true
+	_http_modify.timeout = 120.0
 	add_child(_http_modify)
 	_http_modify.request_completed.connect(_on_modify_request_completed)
 	
 	_http_parse = HTTPRequest.new()
 	_http_parse.name = "HTTPParse"
-	_http_parse.timeout = 15.0
-	_http_parse.use_threads = true
+	_http_parse.timeout = 120.0
 	add_child(_http_parse)
 	_http_parse.request_completed.connect(_on_parse_request_completed)
 	
 	_http_expand = HTTPRequest.new()
 	_http_expand.name = "HTTPExpand"
-	_http_expand.timeout = 30.0
-	_http_expand.use_threads = true
+	_http_expand.timeout = 120.0
 	add_child(_http_expand)
 	_http_expand.request_completed.connect(_on_expand_request_completed)
 	
 	_http_refine = HTTPRequest.new()
 	_http_refine.name = "HTTPRefine"
-	_http_refine.timeout = 20.0
-	_http_refine.use_threads = true
+	_http_refine.timeout = 120.0
 	add_child(_http_refine)
 	_http_refine.request_completed.connect(_on_refine_request_completed)
 	
 	_http_analyze = HTTPRequest.new()
 	_http_analyze.name = "HTTPAnalyze"
-	_http_analyze.timeout = 30.0
-	_http_analyze.use_threads = true
+	_http_analyze.timeout = 120.0
 	add_child(_http_analyze)
 	_http_analyze.request_completed.connect(_on_analyze_request_completed)
 
 ## Pending state for Vision analysis pipeline
 var _pending_analysis_image: Image = null
 var _pending_analysis_metadata: Dictionary = {}
+var _pending_is_modify: bool = false
 
 
 ## Generate a new sprite from a structured spec dictionary.
@@ -157,7 +152,7 @@ Your job:
 			"parts": [{"text": meta_prompt}]
 		}],
 		"generationConfig": {
-			"temperature": 0.7,
+			"temperature": 1.0,
 			"maxOutputTokens": 2048
 		}
 	}
@@ -166,10 +161,6 @@ Your job:
 	var json_body := JSON.stringify(body)
 	
 	print("[GeminiAPI] Step 1: Sending prompt to Pro LLM for refinement...")
-	
-	# Delay slightly to prevent TLS handshake collision on Linux
-	await get_tree().create_timer(0.5).timeout
-	
 	var err := _http_refine.request(url, headers, HTTPClient.METHOD_POST, json_body)
 	if err != OK:
 		print("[GeminiAPI] Pro LLM request failed, falling back to basic prompt")
@@ -181,8 +172,8 @@ func _on_refine_request_completed(result: int, response_code: int, _headers: Pac
 	if result != HTTPRequest.RESULT_SUCCESS:
 		_retry_count += 1
 		if _retry_count <= MAX_RETRIES:
-			print("[GeminiAPI] ⚠️ Pro LLM refinement connection error (result %d), retrying %d/%d in 2s..." % [result, _retry_count, MAX_RETRIES])
-			await get_tree().create_timer(2.0).timeout
+			print("[GeminiAPI] ⚠️ Pro LLM refinement connection error (result %d), retrying %d/%d..." % [result, _retry_count, MAX_RETRIES])
+			await get_tree().create_timer(1.0).timeout
 			_refine_prompt_with_llm(_current_sprite_spec)
 			return
 		else:
@@ -260,17 +251,11 @@ func _send_sprite_request_with_refined_prompt(refined_prompt: String, spec: Dict
 	# Build request parts with the refined prompt
 	var parts: Array = [{"text": refined_prompt}]
 	
-	# Add reference image if provided
-	var ref_image: Image = spec.get("reference_image", null)
-	if ref_image is Image and ref_image != null:
-		var png_bytes := ref_image.save_png_to_buffer()
-		var base64_ref := Marshalls.raw_to_base64(png_bytes)
-		parts.append({
-			"inlineData": {
-				"mimeType": "image/png",
-				"data": base64_ref
-			}
-		})
+	# Note: We intentionally DO NOT send the reference image to the image model.
+	# The image model (Nano Banana) uses reference images for style/composition mixing,
+	# which almost always breaks the strict grid layout constraints of a sprite sheet.
+	# Instead, the Pro LLM has already analyzed the reference image and perfectly
+	# described its features in the `refined_prompt`.
 	
 	var body := {
 		"contents": [{
@@ -767,12 +752,16 @@ func _on_sprite_request_completed(result: int, response_code: int, _headers: Pac
 		image = _remove_background(image)
 		print("[GeminiAPI] ✅ Background removal done")
 		
+		# Stage A.5: Resize sprite sheet to match requested frame resolution
+		image = _resize_sprite_sheet(image, _current_sprite_spec)
+		
 		# Stage B: Build base math-based metadata (used as fallback)
 		var base_metadata := _parse_layout_metadata(_current_sprite_spec, image)
 		
-		# Stage C: Flash Vision for precise frame boundary detection
+		# Stage C: Pro Vision for precise frame boundary detection
 		_pending_analysis_image = image
 		_pending_analysis_metadata = base_metadata
+		_pending_is_modify = false
 		_analyze_frame_bounds(image, base_metadata)
 	else:
 		print("[GeminiAPI] ❌ Failed to extract image. Response body preview:")
@@ -780,39 +769,136 @@ func _on_sprite_request_completed(result: int, response_code: int, _headers: Pac
 		api_error.emit("Failed to extract image from response")
 
 
-## Stage A: Remove image background using corner-pixel chroma key.
-func _remove_background(img: Image) -> Image:
-	img.convert(Image.FORMAT_RGBA8)
-	var bg := _detect_bg_color(img)
-	print("[GeminiAPI] BG color detected: R=%.2f G=%.2f B=%.2f" % [bg.r, bg.g, bg.b])
-	var w := img.get_width()
-	var h := img.get_height()
-	for y in range(h):
-		for x in range(w):
-			var px := img.get_pixel(x, y)
-			if _color_similar(px, bg, 0.15):
-				img.set_pixel(x, y, Color(0, 0, 0, 0))
+## Stage A.5: Resize the sprite sheet so each frame matches the requested resolution.
+## Nano Banana generates at ~1K resolution regardless of requested frame size,
+## so we resize the entire sheet to enforce the correct per-frame dimensions.
+func _resize_sprite_sheet(img: Image, spec: Dictionary) -> Image:
+	var frame_res: String = spec.get("frame_resolution", "32x32")
+	var res_parts := frame_res.split("x")
+	var target_fw := int(res_parts[0]) if res_parts.size() >= 2 else 32
+	var target_fh := int(res_parts[1]) if res_parts.size() >= 2 else 32
+	
+	# Infer grid from perspective
+	var persp: String = spec.get("perspective", "").to_lower()
+	var grid_cols: int
+	var grid_rows: int
+	if "top-down" in persp or "isometric" in persp:
+		grid_cols = 4
+		grid_rows = 4
+	else:
+		grid_cols = 7
+		grid_rows = 1
+	
+	var target_w := target_fw * grid_cols
+	var target_h := target_fh * grid_rows
+	
+	# Skip if already close to target
+	if img.get_width() == target_w and img.get_height() == target_h:
+		print("[GeminiAPI] Sprite sheet already at target size: %dx%d" % [target_w, target_h])
+		return img
+	
+	print("[GeminiAPI] Resizing sprite sheet: %dx%d → %dx%d (frame: %dx%d, grid: %dx%d)" % [
+		img.get_width(), img.get_height(), target_w, target_h, target_fw, target_fh, grid_cols, grid_rows])
+	
+	img.resize(target_w, target_h, Image.INTERPOLATE_NEAREST)
 	return img
 
 
-## Detect background color from the 4 corner pixels (averaged).
+## Stage A: Remove image background using flood fill from edges.
+## Only removes pixels connected to the border that match the background color,
+## preserving character interior pixels even if they are similar to the background.
+func _remove_background(img: Image) -> Image:
+	img.convert(Image.FORMAT_RGBA8)
+	var w := img.get_width()
+	var h := img.get_height()
+	
+	# Detect background color from corner pixels (proper average)
+	var bg := _detect_bg_color(img)
+	print("[GeminiAPI] BG color detected: R=%.2f G=%.2f B=%.2f" % [bg.r, bg.g, bg.b])
+	
+	# Skip removal if background appears transparent already
+	if bg.a < 0.1:
+		print("[GeminiAPI] Background already transparent, skipping removal")
+		return img
+	
+	var threshold := 0.18
+	
+	# Flood fill from all edge pixels — only removes connected background
+	var visited := {}  # Dictionary<int, bool> using pixel index as key
+	var queue: Array[Vector2i] = []
+	
+	# Seed: all border pixels that match the background color
+	for x in range(w):
+		if _color_similar(img.get_pixel(x, 0), bg, threshold):
+			queue.append(Vector2i(x, 0))
+		if _color_similar(img.get_pixel(x, h - 1), bg, threshold):
+			queue.append(Vector2i(x, h - 1))
+	for y in range(1, h - 1):
+		if _color_similar(img.get_pixel(0, y), bg, threshold):
+			queue.append(Vector2i(0, y))
+		if _color_similar(img.get_pixel(w - 1, y), bg, threshold):
+			queue.append(Vector2i(w - 1, y))
+	
+	# BFS flood fill
+	while not queue.is_empty():
+		var pos: Vector2i = queue.pop_back()
+		var key: int = pos.y * w + pos.x
+		
+		if visited.has(key):
+			continue
+		visited[key] = true
+		
+		var px := img.get_pixel(pos.x, pos.y)
+		if not _color_similar(px, bg, threshold):
+			continue
+		
+		# Mark as transparent
+		img.set_pixel(pos.x, pos.y, Color(0, 0, 0, 0))
+		
+		# Enqueue 4-connected neighbors
+		if pos.x > 0:
+			var nk: int = pos.y * w + (pos.x - 1)
+			if not visited.has(nk):
+				queue.append(Vector2i(pos.x - 1, pos.y))
+		if pos.x < w - 1:
+			var nk: int = pos.y * w + (pos.x + 1)
+			if not visited.has(nk):
+				queue.append(Vector2i(pos.x + 1, pos.y))
+		if pos.y > 0:
+			var nk: int = (pos.y - 1) * w + pos.x
+			if not visited.has(nk):
+				queue.append(Vector2i(pos.x, pos.y - 1))
+		if pos.y < h - 1:
+			var nk: int = (pos.y + 1) * w + pos.x
+			if not visited.has(nk):
+				queue.append(Vector2i(pos.x, pos.y + 1))
+	
+	var removed_count := visited.size()
+	print("[GeminiAPI] Flood fill removed %d background pixels (%.1f%%)" % [
+		removed_count, float(removed_count) / float(w * h) * 100.0])
+	return img
+
+
+## Detect background color from the 4 corner pixels (proper average).
 func _detect_bg_color(img: Image) -> Color:
 	var w := img.get_width()
 	var h := img.get_height()
-	var avg := Color(0, 0, 0, 1)
 	var corners := [
 		img.get_pixel(0, 0),
 		img.get_pixel(w - 1, 0),
 		img.get_pixel(0, h - 1),
 		img.get_pixel(w - 1, h - 1),
 	]
+	var avg := Color(0, 0, 0, 0)
 	for c in corners:
 		avg.r += c.r
 		avg.g += c.g
 		avg.b += c.b
+		avg.a += c.a
 	avg.r /= 4.0
 	avg.g /= 4.0
 	avg.b /= 4.0
+	avg.a /= 4.0
 	return avg
 
 
@@ -821,34 +907,44 @@ func _color_similar(a: Color, b: Color, threshold: float) -> bool:
 	return abs(a.r - b.r) < threshold and abs(a.g - b.g) < threshold and abs(a.b - b.b) < threshold
 
 
-## Stage C: Send sprite sheet to Flash Vision to detect exact frame boundaries.
+## Stage C: Send sprite sheet to Pro Vision to dynamically detect frame boundaries.
+## The LLM analyzes the actual image and determines grid layout, frame rects,
+## and animation assignments (idle/walk/jump) autonomously.
 func _analyze_frame_bounds(img: Image, fallback_metadata: Dictionary) -> void:
 	var png_bytes := img.save_png_to_buffer()
 	var base64_img := Marshalls.raw_to_base64(png_bytes)
 	
-	var persp: String = _current_sprite_spec.get("perspective", "").to_lower()
-	var is_topdown: bool = "top-down" in persp
+	var prompt: String = (
+		"You are an expert pixel art sprite sheet analyzer.\n\n"
+		+ "Analyze this sprite sheet image carefully.\n"
+		+ "Image dimensions: " + str(img.get_width()) + "x" + str(img.get_height()) + " pixels.\n\n"
+		+ "YOUR TASK:\n"
+		+ "1. Look at the image and determine how many character frames it contains.\n"
+		+ "2. Determine the grid layout (how many columns and rows of frames).\n"
+		+ "3. Calculate the exact pixel boundary (x, y, w, h) for each frame.\n"
+		+ "   - All frames should have the same width and height.\n"
+		+ "   - frame_width = image_width / grid_cols\n"
+		+ "   - frame_height = image_height / grid_rows\n"
+		+ "4. Classify each frame's animation role:\n"
+		+ "   - 'idle': standing still pose\n"
+		+ "   - 'walk': walking/running cycle frames\n"
+		+ "   - 'jump': jumping/aerial frames\n"
+		+ "   - 'other': any other action\n\n"
+		+ "Return ONLY valid JSON with this exact schema:\n"
+		+ "{\n"
+		+ "  \"grid_cols\": <number of columns>,\n"
+		+ "  \"grid_rows\": <number of rows>,\n"
+		+ "  \"frame_width\": <width of each frame in pixels>,\n"
+		+ "  \"frame_height\": <height of each frame in pixels>,\n"
+		+ "  \"fps\": <recommended animation speed, typically 8-12>,\n"
+		+ "  \"frames\": [\n"
+		+ "    {\"index\": 0, \"x\": 0, \"y\": 0, \"w\": <fw>, \"h\": <fh>, \"role\": \"idle\"},\n"
+		+ "    {\"index\": 1, \"x\": <fw>, \"y\": 0, \"w\": <fw>, \"h\": <fh>, \"role\": \"walk\"},\n"
+		+ "    ...\n"
+		+ "  ]\n"
+		+ "}")
 	
-	var grid_desc: String
-	if is_topdown:
-		grid_desc = "4 rows x 4 columns (row0=DOWN, row1=LEFT, row2=RIGHT, row3=UP)"
-	else:
-		grid_desc = "1 row x 7 columns (col0=idle, col1-4=walk, col5-6=jump)"
-	
-	var fw: int = fallback_metadata.get("frame_width", 64)
-	var fh: int = fallback_metadata.get("frame_height", 64)
-	
-	var prompt: String = ("You are analyzing a pixel art sprite sheet image.\n"
-		+ "Expected layout: " + grid_desc + "\n"
-		+ "The image is " + str(img.get_width()) + "x" + str(img.get_height()) + " pixels.\n"
-		+ "Estimated frame size: " + str(fw) + "x" + str(fh) + " pixels.\n\n"
-		+ "Carefully identify the exact pixel boundary (x, y, w, h) of each animation frame.\n"
-		+ "Each frame should contain exactly ONE character pose with transparent borders.\n"
-		+ "Return ONLY valid JSON, no markdown, no explanation:\n"
-		+ "{\"frames\":[{\"index\":0,\"x\":0,\"y\":0,\"w\":" + str(fw) + ",\"h\":" + str(fh) + "}],"
-		+ "\"grid_cols\":4,\"grid_rows\":4}")
-	
-	var url := GEMINI_BASE_URL + MODEL_FLASH + ":generateContent?key=" + api_key
+	var url := GEMINI_BASE_URL + MODEL_PRO + ":generateContent?key=" + api_key
 	var request_body := {
 		"contents": [{
 			"parts": [
@@ -858,19 +954,22 @@ func _analyze_frame_bounds(img: Image, fallback_metadata: Dictionary) -> void:
 		}],
 		"generationConfig": {
 			"temperature": 0.1, 
-			"maxOutputTokens": 2048,
+			"maxOutputTokens": 4096,
 			"responseMimeType": "application/json"
 		}
 	}
 	
-	print("[GeminiAPI] Stage C: Flash Vision frame analysis...")
+	print("[GeminiAPI] Stage C: Pro Vision dynamic frame analysis...")
 	var err := _http_analyze.request(url, ["Content-Type: application/json"], HTTPClient.METHOD_POST, JSON.stringify(request_body))
 	if err != OK:
 		print("[GeminiAPI] ⚠️ Vision analysis HTTP error, using fallback")
-		sprite_generated.emit(_pending_analysis_image, fallback_metadata)
+		if _pending_is_modify:
+			sprite_modified.emit(_pending_analysis_image, fallback_metadata)
+		else:
+			sprite_generated.emit(_pending_analysis_image, fallback_metadata)
 
 
-## Callback: Flash Vision returned frame boundary JSON.
+## Callback: Pro Vision returned dynamic frame boundary JSON.
 func _on_analyze_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	var fb_meta := _pending_analysis_metadata
 	var image := _pending_analysis_image
@@ -879,7 +978,10 @@ func _on_analyze_request_completed(result: int, response_code: int, _headers: Pa
 		print("[GeminiAPI] ⚠️ Vision analysis failed (%d / HTTP %d), using math fallback" % [result, response_code])
 		if body.size() > 0:
 			print("[GeminiAPI] Vision error body: " + body.get_string_from_utf8().substr(0, 500))
-		sprite_generated.emit(image, fb_meta)
+		if _pending_is_modify:
+			sprite_modified.emit(image, fb_meta)
+		else:
+			sprite_generated.emit(image, fb_meta)
 		return
 	
 	# Extract JSON from response
@@ -889,7 +991,10 @@ func _on_analyze_request_completed(result: int, response_code: int, _headers: Pa
 	var jobj := JSON.new()
 	if jobj.parse(raw_text) != OK:
 		print("[GeminiAPI] ⚠️ Vision JSON parse failed, using fallback. Raw: " + raw_text.substr(0, 200))
-		sprite_generated.emit(image, fb_meta)
+		if _pending_is_modify:
+			sprite_modified.emit(image, fb_meta)
+		else:
+			sprite_generated.emit(image, fb_meta)
 		return
 	
 	var analysis: Dictionary = jobj.data
@@ -897,27 +1002,56 @@ func _on_analyze_request_completed(result: int, response_code: int, _headers: Pa
 	
 	if frames_data.is_empty():
 		print("[GeminiAPI] ⚠️ Vision returned empty frames, using fallback")
-		sprite_generated.emit(image, fb_meta)
+		if _pending_is_modify:
+			sprite_modified.emit(image, fb_meta)
+		else:
+			sprite_generated.emit(image, fb_meta)
 		return
 	
-	# Build frame_rects from Vision output
+	# Build frame_rects and animation assignments from LLM output
 	var frame_rects: Array = []
+	var idle_frames: Array = []
+	var walk_frames: Array = []
+	var jump_frames: Array = []
+	
 	for fd in frames_data:
+		var idx: int = int(fd.get("index", frame_rects.size()))
 		frame_rects.append({
 			"x": int(fd.get("x", 0)),
 			"y": int(fd.get("y", 0)),
 			"w": int(fd.get("w", fb_meta.get("frame_width", 64))),
 			"h": int(fd.get("h", fb_meta.get("frame_height", 64)))
 		})
+		
+		var role: String = fd.get("role", "").to_lower()
+		match role:
+			"idle":
+				idle_frames.append(idx)
+			"walk", "run":
+				walk_frames.append(idx)
+			"jump":
+				jump_frames.append(idx)
+			_:
+				walk_frames.append(idx)
 	
-	var enhanced_meta := fb_meta.duplicate()
+	# Build enhanced metadata from LLM analysis
+	var enhanced_meta := {}
 	enhanced_meta["frame_rects"] = frame_rects
-	if not frame_rects.is_empty():
-		enhanced_meta["frame_width"] = frame_rects[0]["w"]
-		enhanced_meta["frame_height"] = frame_rects[0]["h"]
+	enhanced_meta["frame_count"] = frame_rects.size()
+	enhanced_meta["frame_width"] = int(analysis.get("frame_width", fb_meta.get("frame_width", 64)))
+	enhanced_meta["frame_height"] = int(analysis.get("frame_height", fb_meta.get("frame_height", 64)))
+	enhanced_meta["fps"] = int(analysis.get("fps", fb_meta.get("fps", 10)))
+	enhanced_meta["idle_frames"] = idle_frames if not idle_frames.is_empty() else [0]
+	enhanced_meta["walk_frames"] = walk_frames
+	enhanced_meta["jump_frames"] = jump_frames
 	
-	print("[GeminiAPI] ✅ Vision: %d frames detected" % frame_rects.size())
-	sprite_generated.emit(image, enhanced_meta)
+	print("[GeminiAPI] ✅ Vision: %d frames detected (idle:%d walk:%d jump:%d)" % [
+		frame_rects.size(), idle_frames.size(), walk_frames.size(), jump_frames.size()])
+	
+	if _pending_is_modify:
+		sprite_modified.emit(image, enhanced_meta)
+	else:
+		sprite_generated.emit(image, enhanced_meta)
 
 
 func _on_modify_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
@@ -933,16 +1067,19 @@ func _on_modify_request_completed(result: int, response_code: int, _headers: Pac
 	
 	var image := _extract_image_from_response(body)
 	if image:
-		var metadata := {
-			"frame_width": 64,
-			"frame_height": 64,
-			"frame_count": 7,
-			"idle_frames": [0],
-			"walk_frames": [1, 2, 3, 4],
-			"jump_frames": [5, 6],
-			"fps": 10
-		}
-		sprite_modified.emit(image, metadata)
+		print("[GeminiAPI] ✅ Modified image extracted: %dx%d" % [image.get_width(), image.get_height()])
+		
+		# Apply same pipeline as generate: background removal + resize + dynamic analysis
+		image = _remove_background(image)
+		print("[GeminiAPI] ✅ Modified image background removal done")
+		
+		image = _resize_sprite_sheet(image, _current_sprite_spec)
+		
+		var base_metadata := _parse_layout_metadata(_current_sprite_spec, image)
+		_pending_analysis_image = image
+		_pending_analysis_metadata = base_metadata
+		_pending_is_modify = true
+		_analyze_frame_bounds(image, base_metadata)
 	else:
 		api_error.emit("Failed to extract modified image from response")
 
